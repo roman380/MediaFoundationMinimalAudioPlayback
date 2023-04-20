@@ -2,182 +2,81 @@
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
-#include <Wmcodecdsp.h>
+#include <wmcodecdsp.h>
 #include <combaseapi.h>
+
+#include <unknwn.h>
+#include <winrt/base.h>
+
+#pragma comment(lib, "mf.lib")
+#pragma comment(lib, "mfplat.lib")
+#pragma comment(lib, "mfuuid.lib")
+#pragma comment(lib, "mfreadwrite.lib")
 
 int main()
 {
-    HRESULT hr=CoInitialize(NULL);
+    try
+    {
+        winrt::init_apartment();
+        winrt::check_hresult(MFStartup(MF_VERSION));
 
-    if(SUCCEEDED(hr)){
-   
-        // Initialize the Media Foundation platform.
-       MFStartup(MF_VERSION);
-      
-            MF_OBJECT_TYPE ObjectType = MF_OBJECT_INVALID;
-            IMFSourceResolver* pSourceResolver;
-            IUnknown* pSource = nullptr;
-            IMFMediaSource* mSource;
-            IMFPresentationDescriptor* ppPresentationDescriptor;
-            IMFTransform* mtransform = NULL;
-            IMFTopology* topology = NULL;
-            IMFStreamDescriptor* sdesip = NULL;
-            IMFTopologyNode* source = NULL;
-            IMFTopologyNode* transform;
-            IMFTopologyNode* output = NULL;
-            IMFMediaSink* mediasink = NULL;
-            IMFMediaTypeHandler* mediatypehandler;
-            IMFMediaType* mediatype;
-            IMFMediaType* decodermediatype;
-            IMFMediaSession* mediasession;
+        winrt::com_ptr<IMFSourceResolver> SourceResolver;
+        winrt::check_hresult(MFCreateSourceResolver(SourceResolver.put()));
+        MF_OBJECT_TYPE ObjectType = MF_OBJECT_INVALID;
+        winrt::com_ptr<IUnknown> MediaSourceUnknown;
+        winrt::check_hresult(SourceResolver->CreateObjectFromURL(L"..\\test.mp3", MF_RESOLUTION_MEDIASOURCE, nullptr, &ObjectType, MediaSourceUnknown.put()));
+        auto const MediaSource = MediaSourceUnknown.as<IMFMediaSource>();
 
-         MFCreateSourceResolver(&pSourceResolver);
-           
+        winrt::com_ptr<IMFTopology> Topology;
+        winrt::check_hresult(MFCreateTopology(Topology.put()));
 
-          pSourceResolver->CreateObjectFromURL(
-                L"song.mp3",                       // URL of the source.
-                MF_RESOLUTION_MEDIASOURCE,  // Create a source object.
-                NULL,                       // Optional property store.
-                &ObjectType,     // Receives the created object type. 
-                &pSource          // Receives a pointer to the media source.
-            );
-         
+        winrt::com_ptr<IMFPresentationDescriptor> PresentationDescriptor;
+        winrt::check_hresult(MediaSource->CreatePresentationDescriptor(PresentationDescriptor.put()));
+        BOOL Select;
+        winrt::com_ptr<IMFStreamDescriptor> StreamDescriptor;
+        winrt::check_hresult(PresentationDescriptor->GetStreamDescriptorByIndex(0, &Select, StreamDescriptor.put()));
+        WINRT_ASSERT(Select && StreamDescriptor);
+        winrt::com_ptr<IMFTopologyNode> SourceNode;
+        winrt::check_hresult(MFCreateTopologyNode(MF_TOPOLOGY_SOURCESTREAM_NODE, SourceNode.put()));
+        winrt::check_hresult(SourceNode->SetUnknown(MF_TOPONODE_SOURCE, MediaSource.get()));
+        winrt::check_hresult(SourceNode->SetUnknown(MF_TOPONODE_PRESENTATION_DESCRIPTOR, PresentationDescriptor.get()));
+        winrt::check_hresult(SourceNode->SetUnknown(MF_TOPONODE_STREAM_DESCRIPTOR, StreamDescriptor.get()));
+        winrt::check_hresult(Topology->AddNode(SourceNode.get()));
 
-           pSource->QueryInterface(IID_PPV_ARGS(&mSource));
+        winrt::com_ptr<IMFActivate> Activate;
+        winrt::check_hresult(MFCreateAudioRendererActivate(Activate.put()));
+        winrt::com_ptr<IMFTopologyNode> OutputNode;
+        winrt::check_hresult(MFCreateTopologyNode(MF_TOPOLOGY_OUTPUT_NODE, OutputNode.put())); // https://learn.microsoft.com/en-us/windows/win32/medfound/creating-output-nodes#creating-an-output-node-from-an-activation-object
+        winrt::check_hresult(OutputNode->SetObject(Activate.get()));
+        winrt::check_hresult(Topology->AddNode(OutputNode.get()));
 
+        winrt::check_hresult(SourceNode->ConnectOutput(0, OutputNode.get(), 0));
 
+        winrt::com_ptr<IMFMediaSession> MediaSession;
+        winrt::check_hresult(MFCreateMediaSession(nullptr, MediaSession.put()));
+        winrt::check_hresult(MediaSession->SetTopology(0, Topology.get()));
 
+        PROPVARIANT StartTime;
+        PropVariantInit(&StartTime);
+        StartTime.vt = VT_I8;
+        StartTime.hVal.QuadPart = 0;
+        winrt::check_hresult(MediaSession->Start(nullptr, &StartTime));
 
-
-            mSource->CreatePresentationDescriptor(&ppPresentationDescriptor);
-
-            ppPresentationDescriptor->SelectStream(0);
-         hr = CoCreateInstance(__uuidof(CMP3DecMediaObject),
-                NULL,
-                CLSCTX_INPROC_SERVER,
-                IID_IMFTransform,
-                (void**)&mtransform);
-
-         if (SUCCEEDED(hr)) {
-
-         }
-            MFCreateTopology(
-                &topology
-            );
-
-            
-
-            MFCreateTopologyNode(MF_TOPOLOGY_SOURCESTREAM_NODE, &source);
-
-            source->SetUnknown(MF_TOPONODE_SOURCE, mSource);
-            source->SetUnknown(MF_TOPONODE_PRESENTATION_DESCRIPTOR, ppPresentationDescriptor);
-            BOOL value;
-            ppPresentationDescriptor->GetStreamDescriptorByIndex(0, &value, &sdesip);
-
-          
-
-            MFCreateMediaType(&decodermediatype);
-            decodermediatype->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
-
-            decodermediatype->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
-
-            decodermediatype->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 1);
-
-            sdesip->GetMediaTypeHandler(&mediatypehandler);
-
-            mediatypehandler->GetCurrentMediaType(&mediatype);
-
-            mtransform->SetInputType(0, mediatype, NULL);
-            mtransform->SetOutputType(0, decodermediatype, NULL);
-
-            source->SetUnknown(MF_TOPONODE_STREAM_DESCRIPTOR, sdesip);
-
-            topology->AddNode(source);
-
-         
-
-            MFCreateTopologyNode(MF_TOPOLOGY_TRANSFORM_NODE, &transform);
-
-
-            transform->SetObject(mtransform);
-
-            topology->AddNode(transform);
-
-            IMFActivate* active;
-
-
-           hr =  MFCreateAudioRendererActivate(&active);
-
-          if (SUCCEEDED(hr)) {
-              
-             
-          }
-
-         
-        
-          
-
-        hr =     active->ActivateObject(__uuidof(IMFMediaSink), (void**)&mediasink);
-
-
-        if (SUCCEEDED(hr)) {
-           
-           
+        auto const MediaEventGenerator = MediaSession.as<IMFMediaEventGenerator>();
+        for(; ; )
+        {
+            winrt::com_ptr<IMFMediaEvent> MediaEvent;
+            winrt::check_hresult(MediaEventGenerator->GetEvent(0, MediaEvent.put()));
+            MediaEventType Type;
+            winrt::check_hresult(MediaEvent->GetType(&Type));
+            std::wcout << L"Event: " << static_cast<int>(Type) << std::endl;
         }
-           
-           
-            MFCreateTopologyNode(MF_TOPOLOGY_OUTPUT_NODE, &output);
 
-           std::cout<<
-
-      output->SetObject(mediasink);
-
-            output->SetUINT32(MF_TOPONODE_STREAMID, 0);
-
-            output->SetUINT32(MF_TOPONODE_NOSHUTDOWN_ON_REMOVE, FALSE);
-
-            topology->AddNode(output);
-
-
-        source->ConnectOutput(0, transform, 0);
-
-          transform->ConnectOutput(0, output, 0);
-
-           
-
-            MFCreateMediaSession(
-                NULL,
-                &mediasession
-            );
-
-            PROPVARIANT var;
-            PropVariantInit(&var);
-            var.vt = VT_I8;
-            var.hVal.QuadPart = 0; // 10^7 = 1 second.
-            mediasession->SetTopology(MFSESSION_SETTOPOLOGY_NORESOLUTION, topology);
-           
-            mediasession->Start(NULL, &var);
-
-          pSourceResolver->Release();
-            pSource->Release();
-            mSource->Release();
-           ppPresentationDescriptor->Release();
-           mtransform->Release();
-           topology->Release();
-           sdesip->Release();
-           source->Release();
-           transform->Release();
-          output->Release();
-           mediatypehandler->Release();
-            mediatype->Release();
-          decodermediatype->Release();
-          mediasession->Shutdown();
-            mediasession->Release();
-            mediasink->Release();
-
-            MFShutdown();
-
-        }
-        CoUninitialize();
-        }
-    
+        winrt::check_hresult(MFShutdown());
+    }
+    catch(winrt::hresult_error const& Exception)
+    {
+        std::wcerr << L"Exception: " << Exception.message().c_str() << std::endl;
+    }
+    return 0;
+}
