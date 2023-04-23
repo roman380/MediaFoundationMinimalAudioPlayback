@@ -4,7 +4,7 @@ See [original StackOverflow question](https://stackoverflow.com/q/76056442/86801
 
 The application plays an MP3 file (you should supply yours) in less than 100 lines of C++ code with Microsoft Media Foundation.
 
-See [`wil`](tree/wil) branch with a bit more of code, and the code that produces printout below.
+See [`wil`](https://github.com/roman380/MediaFoundationMinimalAudioPlayback/tree/wil) branch with a bit more of code, and the code that produces printout below.
 
 Note that we are supplying MP3 file media source (node 0) and default audio output renderer (AKA sink, output; node 1). Microsoft Media Foundation resolves topology and supplies two transforms in order to connect source to sink: 
 
